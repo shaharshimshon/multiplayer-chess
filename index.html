@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Online Chess Game</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      color: #333;
+    }
+
+    header {
+      background: #1e1e2f;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+      font-size: 1.5rem;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+    }
+
+    .lobby {
+      margin-bottom: 2rem;
+      background: white;
+      padding: 1rem;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    input, button {
+      padding: 0.6rem 1rem;
+      margin: 0.5rem;
+      font-size: 1rem;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      background: #4a90e2;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #357ab7;
+    }
+
+    .chess-board {
+      display: grid;
+      grid-template-columns: repeat(8, 60px);
+      grid-template-rows: repeat(8, 60px);
+      border: 2px solid #333;
+    }
+
+    .cell {
+      width: 60px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+    }
+
+    .white { background: #eee; }
+    .black { background: #555; color: white; }
+  </style>
+</head>
+<body>
+  <header>Online Chess Game</header>
+
+  <div class="container">
+    <div class="lobby">
+      <input type="text" id="username" placeholder="Your name" />
+      <button id="create-room">Create Game</button>
+      <button id="join-room">Join Game</button>
+      <input type="text" id="room-code" placeholder="Room Code" />
+    </div>
+
+    <div id="game" class="chess-board" style="display: none;"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-app.js";
+    import {
+      getDatabase, ref, set, onValue, get
+    } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBDHZpDfKz711k2agTq4ekGU7-iN_p99mc",
+      authDomain: "icqclone.firebaseapp.com",
+      databaseURL: "https://icqclone-default-rtdb.firebaseio.com",
+      projectId: "icqclone",
+      storageBucket: "icqclone.appspot.com",
+      messagingSenderId: "922649039358",
+      appId: "1:922649039358:web:fbdd0a0e21d64e4d32f0af"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const usernameInput = document.getElementById("username");
+    const roomCodeInput = document.getElementById("room-code");
+    const createBtn = document.getElementById("create-room");
+    const joinBtn = document.getElementById("join-room");
+    const boardDiv = document.getElementById("game");
+
+    const defaultBoard = [
+      "♜","♞","♝","♛","♚","♝","♞","♜",
+      "♟","♟","♟","♟","♟","♟","♟","♟",
+      "","","","","","","","",
+      "","","","","","","","",
+      "","","","","","","","",
+      "","","","","","","","",
+      "♙","♙","♙","♙","♙","♙","♙","♙",
+      "♖","♘","♗","♕","♔","♗","♘","♖"
+    ];
+
+    let roomId = null;
+
+    function renderBoard(board) {
+      boardDiv.innerHTML = "";
+      boardDiv.style.display = "grid";
+      board.forEach((piece, i) => {
+        const cell = document.createElement("div");
+        cell.className = `cell ${((Math.floor(i/8)+i%8) % 2) ? "black" : "white"}`;
+        cell.textContent = piece;
+        boardDiv.appendChild(cell);
+      });
+    }
+
+    createBtn.onclick = async () => {
+      const name = usernameInput.value.trim();
+      if (!name) return alert("Enter your name");
+
+      const newRoomId = Math.random().toString(36).substring(2, 8);
+      roomId = newRoomId;
+
+      await set(ref(db, "rooms/" + newRoomId), {
+        player1: name,
+        board: defaultBoard
+      });
+
+      alert("Room created! Share this code: " + newRoomId);
+      startGameListener(newRoomId);
+    };
+
+    joinBtn.onclick = async () => {
+      const code = roomCodeInput.value.trim();
+      const name = usernameInput.value.trim();
+      if (!code || !name) return alert("Enter room code and your name");
+
+      const snapshot = await get(ref(db, "rooms/" + code));
+      if (!snapshot.exists()) return alert("Room does not exist");
+
+      await set(ref(db, "rooms/" + code + "/player2"), name);
+      roomId = code;
+      alert("Joined room: " + code);
+      startGameListener(code);
+    };
+
+    function startGameListener(roomId) {
+      onValue(ref(db, "rooms/" + roomId + "/board"), (snap) => {
+        if (snap.exists()) {
+          renderBoard(snap.val());
+        }
+      });
+    }
+  </script>
+</body>
+</html>
