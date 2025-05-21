@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Online Chess Game</title>
+  <title>Multiplayer Chess</title>
   <style>
-    /* same styles as before */
     body {
       margin: 0;
       font-family: 'Segoe UI', sans-serif;
       background: #f0f2f5;
       color: #333;
     }
+
     header {
       background: #1e1e2f;
       color: white;
@@ -19,68 +19,87 @@
       text-align: center;
       font-size: 1.5rem;
     }
+
     .container {
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 2rem;
+      padding: 1rem;
     }
+
     .lobby {
-      margin-bottom: 2rem;
+      margin-bottom: 1rem;
       background: white;
       padding: 1rem;
       border-radius: 10px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      text-align: center;
+      width: 90%;
+      max-width: 400px;
     }
+
     input, button {
       padding: 0.6rem 1rem;
-      margin: 0.5rem;
+      margin: 0.3rem;
       font-size: 1rem;
       border-radius: 6px;
       border: 1px solid #ccc;
+      width: 80%;
     }
+
     button {
       background: #4a90e2;
       color: white;
       border: none;
       cursor: pointer;
     }
+
     button:hover {
       background: #357ab7;
     }
+
     .chess-board {
       display: grid;
-      grid-template-columns: repeat(8, 60px);
-      grid-template-rows: repeat(8, 60px);
+      grid-template-columns: repeat(8, minmax(30px, 1fr));
+      grid-template-rows: repeat(8, minmax(30px, 1fr));
+      width: 90vw;
+      max-width: 480px;
+      aspect-ratio: 1;
       border: 2px solid #333;
+      margin-top: 1rem;
     }
+
     .cell {
-      width: 60px;
-      height: 60px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 2rem;
+      font-size: 4vw;
+      user-select: none;
     }
+
     .white { background: #eee; }
-    .black { background: #555; color: white; }
+    .black { background: #444; color: white; }
+
+    .selected {
+      outline: 3px solid yellow;
+    }
   </style>
 </head>
 <body>
-  <header>Online Chess Game</header>
+  <header>Multiplayer Chess</header>
 
   <div class="container">
     <div class="lobby">
       <input type="text" id="username" placeholder="Your name" />
+      <input type="text" id="room-code" placeholder="Room Code" />
       <button id="create-room">Create Game</button>
       <button id="join-room">Join Game</button>
-      <input type="text" id="room-code" placeholder="Room Code" />
     </div>
 
     <div id="game" class="chess-board" style="display: none;"></div>
   </div>
 
-  <!-- Firebase JS SDK -->
+  <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/11.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.8.0/firebase-database-compat.js"></script>
 
@@ -116,15 +135,46 @@
     ];
 
     let roomId = null;
+    let selectedIndex = null;
+    let currentPlayer = "";
 
-    function renderBoard(board) {
+    function renderBoard(board, flip = false) {
       boardDiv.innerHTML = "";
       boardDiv.style.display = "grid";
-      board.forEach((piece, i) => {
+
+      const indices = Array.from({ length: 64 }, (_, i) => i);
+      if (flip) indices.reverse();
+
+      indices.forEach(i => {
         const cell = document.createElement("div");
-        cell.className = `cell ${((Math.floor(i/8)+i%8) % 2) ? "black" : "white"}`;
+        const piece = board[i];
+        cell.className = `cell ${((Math.floor(i / 8) + i % 8) % 2) ? "black" : "white"}`;
         cell.textContent = piece;
+        cell.dataset.index = i;
         boardDiv.appendChild(cell);
+
+        cell.addEventListener("click", () => {
+          if (selectedIndex === null) {
+            if (piece) {
+              selectedIndex = i;
+              cell.classList.add("selected");
+            }
+          } else {
+            movePiece(selectedIndex, i);
+            selectedIndex = null;
+            document.querySelectorAll(".cell").forEach(c => c.classList.remove("selected"));
+          }
+        });
+      });
+    }
+
+    function movePiece(from, to) {
+      db.ref("rooms/" + roomId + "/board").once("value", snap => {
+        if (!snap.exists()) return;
+        const board = snap.val();
+        board[to] = board[from];
+        board[from] = "";
+        db.ref("rooms/" + roomId + "/board").set(board);
       });
     }
 
@@ -134,36 +184,41 @@
 
       const newRoomId = Math.random().toString(36).substring(2, 8);
       roomId = newRoomId;
+      currentPlayer = "white";
 
-      await db.ref("rooms/" + newRoomId).set({
+      await db.ref("rooms/" + roomId).set({
         player1: name,
         board: defaultBoard
       });
 
-      alert("Room created! Share this code: " + newRoomId);
-      startGameListener(newRoomId);
+      alert("Room created! Share code: " + newRoomId);
+      startGameListener(roomId);
     };
 
     joinBtn.onclick = async () => {
-      const code = roomCodeInput.value.trim();
       const name = usernameInput.value.trim();
-      if (!code || !name) return alert("Enter room code and your name");
+      const code = roomCodeInput.value.trim();
+      if (!name || !code) return alert("Enter name and room code");
 
-      const snapshot = await db.ref("rooms/" + code).get();
-      if (!snapshot.exists()) return alert("Room does not exist");
+      const snap = await db.ref("rooms/" + code).get();
+      if (!snap.exists()) return alert("Room not found");
 
       await db.ref("rooms/" + code + "/player2").set(name);
       roomId = code;
+      currentPlayer = "black";
+
       alert("Joined room: " + code);
       startGameListener(code);
     };
 
     function startGameListener(roomId) {
-      db.ref("rooms/" + roomId + "/board").on("value", (snap) => {
+      db.ref("rooms/" + roomId + "/board").on("value", snap => {
         if (snap.exists()) {
-          renderBoard(snap.val());
+          renderBoard(snap.val(), currentPlayer === "black");
         }
       });
+
+      boardDiv.style.display = "grid";
     }
   </script>
 </body>
