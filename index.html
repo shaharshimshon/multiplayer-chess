@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Multiplayer Chess</title>
+  <title>Online Chess Game</title>
   <style>
     body {
       margin: 0;
@@ -24,24 +24,27 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 1rem;
+      padding: 2rem;
     }
 
     .lobby {
-      margin-bottom: 1rem;
+      margin-bottom: 2rem;
       background: white;
       padding: 1rem;
       border-radius: 10px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      text-align: center;
     }
 
     input, button {
-      padding: 0.6rem;
-      margin: 0.2rem;
+      padding: 0.6rem 1rem;
+      margin: 0.5rem;
       font-size: 1rem;
       border-radius: 6px;
       border: 1px solid #ccc;
-      width: 160px;
+      width: 100%;
+      max-width: 300px;
+      box-sizing: border-box;
     }
 
     button {
@@ -55,49 +58,407 @@
       background: #357ab7;
     }
 
+    .status {
+      margin: 0.5rem;
+      font-weight: bold;
+    }
+
     .chess-board {
       display: grid;
-      grid-template-columns: repeat(8, 40px);
-      grid-template-rows: repeat(8, 40px);
+      grid-template-columns: repeat(8, 1fr);
+      width: 100%;
+      max-width: 480px;
+      aspect-ratio: 1;
       border: 2px solid #333;
     }
 
     .cell {
-      width: 40px;
-      height: 40px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.4rem;
-      user-select: none;
+      font-size: 2rem;
+      touch-action: manipulation;
     }
 
     .white { background: #eee; }
     .black { background: #555; color: white; }
 
-    #status {
-      font-weight: bold;
-      color: red;
-      text-align: center;
-      margin-top: 1rem;
+    .cell.selected {
+      outline: 3px solid yellow;
+    }
+
+    @media (max-width: 600px) {
+      .chess-board {
+        max-width: 100%;
+      }
     }
   </style>
 </head>
 <body>
-  <header>Multiplayer Chess</header>
+  <header>Online Chess Game</header>
+
   <div class="container">
     <div class="lobby">
-      <input type="text" id="username" placeholder="Your name" /><br>
+      <input type="text" id="username" placeholder="Your name" />
+      <input type="text" id="room-code" placeholder="Room Code (if joining)" />
       <button id="create-room">Create Game</button>
-      <button id="join-room">Join Game</button><br>
-      <input type="text" id="room-code" placeholder="Room Code" />
+      <button id="join-room">Join Game</button>
+      <div class="status" id="status"></div>
     </div>
+
     <div id="game" class="chess-board" style="display: none;"></div>
-    <p id="status"></p>
   </div>
 
-  <script type="module">
-    // Firebase and game logic will be here in final file
-  </script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  const createBtn = document.getElementById('create-room');
+  const joinBtn = document.getElementById('join-room');
+  const usernameInput = document.getElementById('username');
+  const roomInput = document.getElementById('room-code');
+  const statusText = document.getElementById('status');
+  const boardEl = document.getElementById('game');
+
+  let playerColor = null;
+  let playerName = '';
+  let roomCode = '';
+  let selectedCell = null;
+  let gameState = null;
+
+  const pieces = {
+    r: '♜', n: '♞', b: '♝', q: '♛', k: '♚', p: '♟',
+    R: '♖', N: '♘', B: '♗', Q: '♕', K: '♔', P: '♙'
+  };
+
+  const defaultBoard = [
+    ['r','n','b','q','k','b','n','r'],
+    ['p','p','p','p','p','p','p','p'],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['P','P','P','P','P','P','P','P'],
+    ['R','N','B','Q','K','B','N','R']
+  ];
+
+  createBtn.onclick = () => {
+    playerName = usernameInput.value.trim();
+    if (!playerName) return alert('Enter your name');
+    roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+    playerColor = 'white';
+    const gameData = {
+      board: defaultBoard,
+      turn: 'white',
+      players: { white: playerName }
+    };
+    db.ref('rooms/' + roomCode).set(gameData);
+    startGame();
+  };
+
+  joinBtn.onclick = () => {
+    playerName = usernameInput.value.trim();
+    roomCode = roomInput.value.trim().toUpperCase();
+    if (!playerName || !roomCode) return alert('Enter name and room code');
+
+    db.ref('rooms/' + roomCode).once('value', snap => {
+      const data = snap.val();
+      if (!data) return alert('Room not found');
+      if (data.players?.black) return alert('Room full');
+      db.ref('rooms/' + roomCode + '/players/black').set(playerName);
+      playerColor = 'black';
+      startGame();
+    });
+  };
+
+  function startGame() {
+    statusText.innerText = `You are ${playerColor}. Room: ${roomCode}`;
+    boardEl.style.display = 'grid';
+    db.ref('rooms/' + roomCode).on('value', snap => {
+      const data = snap.val();
+      if (!data) return;
+      gameState = data;
+      renderBoard(data.board);
+    });
+  }
+
+  function renderBoard(board) {
+    boardEl.innerHTML = '';
+    const flat = playerColor === 'black' ? board.slice().reverse() : board;
+
+    flat.forEach((row, i) => {
+      const rowIndex = playerColor === 'black' ? 7 - i : i;
+      const rowData = playerColor === 'black' ? row.slice().reverse() : row;
+
+      rowData.forEach((cell, j) => {
+        const colIndex = playerColor === 'black' ? 7 - j : j;
+        const div = document.createElement('div');
+        div.className = 'cell ' + ((rowIndex + colIndex) % 2 === 0 ? 'white' : 'black');
+        div.dataset.row = rowIndex;
+        div.dataset.col = colIndex;
+        if (cell) div.textContent = pieces[cell];
+        if (selectedCell &&
+            selectedCell.row == rowIndex && selectedCell.col == colIndex) {
+          div.classList.add('selected');
+        }
+        div.onclick = () => handleCellClick(rowIndex, colIndex);
+        boardEl.appendChild(div);
+      });
+    });
+  }
+</script>
+
+  <script>
+  function handleCellClick(row, col) {
+    if (!gameState) return;
+    const piece = gameState.board[row][col];
+
+    // Player's turn check
+    if (gameState.turn !== playerColor) return;
+
+    // Select your own piece
+    if (!selectedCell) {
+      if (!piece || (playerColor === 'white' && piece === piece.toLowerCase()) ||
+          (playerColor === 'black' && piece === piece.toUpperCase())) return;
+      selectedCell = { row, col };
+      renderBoard(gameState.board);
+      return;
+    }
+
+    // Move validation
+    const from = selectedCell;
+    const to = { row, col };
+
+    if (!isValidMove(gameState.board, from, to, playerColor)) {
+      selectedCell = null;
+      renderBoard(gameState.board);
+      return;
+    }
+
+    // Make move
+    const newBoard = gameState.board.map(r => r.slice());
+    newBoard[to.row][to.col] = newBoard[from.row][from.col];
+    newBoard[from.row][from.col] = '';
+    db.ref('rooms/' + roomCode).update({
+      board: newBoard,
+      turn: playerColor === 'white' ? 'black' : 'white'
+    });
+
+    selectedCell = null;
+  }
+
+  function isValidMove(board, from, to, color) {
+    const piece = board[from.row][from.col];
+    const target = board[to.row][to.col];
+    const dx = to.col - from.col;
+    const dy = to.row - from.row;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    const isWhite = color === 'white';
+    const p = piece.toLowerCase();
+
+    if (target) {
+      const sameSide = (isWhite && target === target.toUpperCase()) ||
+                       (!isWhite && target === target.toLowerCase());
+      if (sameSide) return false;
+    }
+
+    switch (p) {
+      case 'p':
+        if (isWhite) {
+          if (dy === -1 && dx === 0 && !target) return true;
+          if (from.row === 6 && dy === -2 && dx === 0 && !target && !board[from.row - 1][from.col]) return true;
+          if (dy === -1 && absDx === 1 && target) return true;
+        } else {
+          if (dy === 1 && dx === 0 && !target) return true;
+          if (from.row === 1 && dy === 2 && dx === 0 && !target && !board[from.row + 1][from.col]) return true;
+          if (dy === 1 && absDx === 1 && target) return true;
+        }
+        return false;
+      case 'r':
+        if (dx !== 0 && dy !== 0) return false;
+        return clearPath(board, from, to);
+      case 'n':
+        return (absDx === 1 && absDy === 2) || (absDx === 2 && absDy === 1);
+      case 'b':
+        if (absDx !== absDy) return false;
+        return clearPath(board, from, to);
+      case 'q':
+        if (dx === 0 || dy === 0 || absDx === absDy) return clearPath(board, from, to);
+        return false;
+      case 'k':
+        return absDx <= 1 && absDy <= 1;
+    }
+    return false;
+  }
+
+  function clearPath(board, from, to) {
+    const dx = Math.sign(to.col - from.col);
+    const dy = Math.sign(to.row - from.row);
+    let x = from.col + dx;
+    let y = from.row + dy;
+    while (x !== to.col || y !== to.row) {
+      if (board[y][x]) return false;
+      x += dx;
+      y += dy;
+    }
+    return true;
+  }
+</script>
+
+  <script>
+  function isInCheck(board, color) {
+    // Placeholder: Detect if current player's king is under attack
+    // Add logic here for full implementation
+    return false;
+  }
+
+  function isCheckmate(board, color) {
+    // Placeholder: Full checkmate detection is complex
+    return false;
+  }
+
+  function restartGame() {
+    const newBoard = [
+      ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'],
+      ['p', 'p', 'p', 'p', 'p', 'p', 'p', 'p'],
+      ['', '', '', '', '', '', '', ''],
+      ['', '', '', '', '', '', '', ''],
+      ['', '', '', '', '', '', '', ''],
+      ['', '', '', '', '', '', '', ''],
+      ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'],
+      ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R']
+    ];
+    db.ref('rooms/' + roomCode).set({
+      board: newBoard,
+      turn: 'white'
+    });
+  }
+
+  function showMessage(msg) {
+    const messageBox = document.createElement('div');
+    messageBox.innerText = msg;
+    messageBox.style.position = 'absolute';
+    messageBox.style.top = '10px';
+    messageBox.style.left = '10px';
+    messageBox.style.background = '#fff';
+    messageBox.style.padding = '10px';
+    messageBox.style.border = '1px solid #ccc';
+    messageBox.style.zIndex = '1000';
+    document.body.appendChild(messageBox);
+    setTimeout(() => messageBox.remove(), 3000);
+  }
+</script>
+
+<style>
+  body {
+    font-family: sans-serif;
+    margin: 0;
+    padding: 0;
+    background: #f2f2f2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  h1 {
+    text-align: center;
+    margin: 16px 0 8px;
+  }
+
+  #board {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    width: 90vmin;
+    height: 90vmin;
+    margin: 10px;
+    border: 2px solid #444;
+  }
+
+  .cell {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 4.5vmin;
+    user-select: none;
+  }
+
+  .light {
+    background-color: #f0d9b5;
+  }
+
+  .dark {
+    background-color: #b58863;
+  }
+
+  .selected {
+    border: 2px solid red;
+    box-sizing: border-box;
+  }
+
+  #controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0;
+  }
+
+  input[type="text"], button {
+    font-size: 16px;
+    padding: 8px 12px;
+  }
+
+  @media (max-width: 600px) {
+    .cell {
+      font-size: 5vmin;
+    }
+  }
+</style>
+
+  <!-- Firebase Scripts -->
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+<script>
+  // Replace with your own Firebase project configuration
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  // Unicode chess piece map
+  const pieces = {
+    'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
+    'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
+  };
+
+  // Auto focus on input field on page load
+  window.onload = () => {
+    document.getElementById("room-code").focus();
+  };
+</script>
+
 </body>
 </html>
