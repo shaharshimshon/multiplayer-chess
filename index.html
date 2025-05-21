@@ -5,212 +5,236 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Online Chess Game</title>
   <style>
-    * {
-      box-sizing: border-box;
-    }
-
     body {
       margin: 0;
       font-family: 'Segoe UI', sans-serif;
-      background: #f0f2f5;
+      background: #f4f4f4;
       color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
 
     header {
-      background: #1e1e2f;
-      color: white;
+      width: 100%;
+      background: #222;
+      color: #fff;
       padding: 1rem;
       text-align: center;
       font-size: 1.5rem;
     }
 
-    .container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 1rem;
-    }
-
     .lobby {
-      margin-bottom: 1rem;
-      background: white;
-      padding: 1rem;
-      border-radius: 10px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-      width: 100%;
-      max-width: 400px;
+      margin: 1rem 0;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.5rem;
     }
 
     input, button {
-      width: 100%;
       padding: 0.6rem;
-      margin: 0.4rem 0;
       font-size: 1rem;
-      border-radius: 6px;
+      border-radius: 5px;
       border: 1px solid #ccc;
     }
 
     button {
-      background: #4a90e2;
-      color: white;
+      background: #007bff;
+      color: #fff;
       border: none;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background: #357ab7;
     }
 
     .chess-board {
       display: grid;
-      grid-template-columns: repeat(8, 40px);
-      grid-template-rows: repeat(8, 40px);
-      border: 2px solid #333;
-      user-select: none;
+      grid-template-columns: repeat(8, 1fr);
+      width: 100vw;
+      max-width: 480px;
+      aspect-ratio: 1/1;
+      margin-bottom: 1rem;
     }
 
     .cell {
-      width: 40px;
-      height: 40px;
+      width: 100%;
+      height: 100%;
+      font-size: 2rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.5rem;
     }
 
     .white { background: #eee; }
-    .black { background: #666; color: white; }
-    .selected { outline: 2px solid red; }
+    .black { background: #444; color: white; }
+    .selected { outline: 2px solid gold; }
 
-    </style>
+    #status {
+      font-size: 1rem;
+      margin-bottom: 1rem;
+    }
+  </style>
 </head>
 <body>
-  <header>Online Chess Game</header>
-  <div class="container">
-    <div class="lobby">
-      <input type="text" id="username" placeholder="Your name" />
-      <button id="create-room">Create Game</button>
-      <button id="join-room">Join Game</button>
-      <input type="text" id="room-code" placeholder="Room Code" />
-    </div>
-    <div id="game" class="chess-board" style="display: none;"></div>
-  </div>
+<header>Online Chess Game</header>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-app.js";
-    import {
-      getDatabase,
-      ref,
-      set,
-      onValue,
-      get,
-      update
-    } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-database.js";
+<div class="lobby">
+  <input type="text" id="username" placeholder="Your name" />
+  <input type="text" id="room-code" placeholder="Room code" />
+  <button id="create-room">Create</button>
+  <button id="join-room">Join</button>
+</div>
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyBDHZpDfKz711k2agTq4ekGU7-iN_p99mc",
-      authDomain: "icqclone.firebaseapp.com",
-      databaseURL: "https://icqclone-default-rtdb.firebaseio.com",
-      projectId: "icqclone",
-      storageBucket: "icqclone.appspot.com",
-      messagingSenderId: "922649039358",
-      appId: "1:922649039358:web:fbdd0a0e21d64e4d32f0af"
-    };
+<div id="status"></div>
+<div id="game" class="chess-board"></div>
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-app.js";
+  import { getDatabase, ref, set, get, onValue, update } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-database.js";
 
-    const usernameInput = document.getElementById("username");
-    const roomCodeInput = document.getElementById("room-code");
-    const createBtn = document.getElementById("create-room");
-    const joinBtn = document.getElementById("join-room");
-    const boardDiv = document.getElementById("game");
+  const firebaseConfig = {
+    apiKey: "AIzaSyBDHZpDfKz711k2agTq4ekGU7-iN_p99mc",
+    authDomain: "icqclone.firebaseapp.com",
+    databaseURL: "https://multiplayer-chess-91e43-default-rtdb.asia-southeast1.firebasedatabase.app/",
+    projectId: "icqclone",
+    storageBucket: "icqclone.appspot.com",
+    messagingSenderId: "922649039358",
+    appId: "1:922649039358:web:fbdd0a0e21d64e4d32f0af"
+  };
 
-    const defaultBoard = [
-      "♜","♞","♝","♛","♚","♝","♞","♜",
-      "♟","♟","♟","♟","♟","♟","♟","♟",
-      "","","","","","","","",
-      "","","","","","","","",
-      "","","","","","","","",
-      "","","","","","","","",
-      "♙","♙","♙","♙","♙","♙","♙","♙",
-      "♖","♘","♗","♕","♔","♗","♘","♖"
-    ];
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const boardDiv = document.getElementById("game");
+  const usernameInput = document.getElementById("username");
+  const roomCodeInput = document.getElementById("room-code");
+  const createBtn = document.getElementById("create-room");
+  const joinBtn = document.getElementById("join-room");
+  const statusDiv = document.getElementById("status");
 
-    let roomId = null;
-    let selectedIndex = null;
-    let isPlayer1 = false;
+  const defaultBoard = [
+    "♜","♞","♝","♛","♚","♝","♞","♜",
+    "♟","♟","♟","♟","♟","♟","♟","♟",
+    "","","","","","","","",
+    "","","","","","","","",
+    "","","","","","","","",
+    "","","","","","","","",
+    "♙","♙","♙","♙","♙","♙","♙","♙",
+    "♖","♘","♗","♕","♔","♗","♘","♖"
+  ];
 
-    function renderBoard(board) {
-      boardDiv.innerHTML = "";
-      boardDiv.style.display = "grid";
-      board.forEach((piece, i) => {
-        const cell = document.createElement("div");
-        cell.className = `cell ${((Math.floor(i/8)+i%8) % 2) ? "black" : "white"}`;
-        cell.textContent = piece;
-        cell.dataset.index = i;
+  let roomId = null;
+  let player = null;
+  let selected = null;
 
-        cell.addEventListener("click", () => handleCellClick(i, board));
-        boardDiv.appendChild(cell);
-      });
-    }
+  function renderBoard(board, turn) {
+    boardDiv.innerHTML = "";
+    board.forEach((piece, i) => {
+      const cell = document.createElement("div");
+      cell.className = `cell ${((Math.floor(i / 8) + i) % 2 === 0) ? "white" : "black"}`;
+      cell.dataset.index = i;
+      cell.textContent = piece;
 
-    async function handleCellClick(i, board) {
-      if (selectedIndex === null) {
-        if ((isPlayer1 && board[i] && board[i].charCodeAt(0) < 9818) ||
-            (!isPlayer1 && board[i] && board[i].charCodeAt(0) > 9818)) {
-          selectedIndex = i;
-        }
-      } else {
-        const piece = board[selectedIndex];
-        board[selectedIndex] = "";
-        board[i] = piece;
-        selectedIndex = null;
-        await update(ref(db, "rooms/" + roomId), { board });
+      if (selected === i) {
+        cell.classList.add("selected");
       }
+
+      cell.onclick = () => handleCellClick(i, board, turn);
+      boardDiv.appendChild(cell);
+    });
+  }
+
+  function handleCellClick(i, board, turn) {
+    if (player !== turn) return;
+
+    const piece = board[i];
+
+    if (selected === null) {
+      if (isOwnPiece(piece)) {
+        selected = i;
+        renderBoard(board, turn);
+      }
+    } else {
+      if (i !== selected) {
+        makeMove(selected, i, board);
+      }
+      selected = null;
     }
+  }
 
-    createBtn.onclick = async () => {
-      const name = usernameInput.value.trim();
-      if (!name) return alert("Enter your name");
+  function isOwnPiece(piece) {
+    if (!piece) return false;
+    return (player === 'white' && '♙♖♘♗♕♔'.includes(piece)) ||
+           (player === 'black' && '♟♜♞♝♛♚'.includes(piece));
+  }
 
-      const newRoomId = Math.random().toString(36).substring(2, 8);
-      roomId = newRoomId;
-      isPlayer1 = true;
+  async function makeMove(from, to, board) {
+    const piece = board[from];
+    const newBoard = [...board];
+    newBoard[to] = piece;
+    newBoard[from] = "";
 
-      await set(ref(db, "rooms/" + newRoomId), {
-        player1: name,
-        board: defaultBoard
-      });
+    await update(ref(db, "rooms/" + roomId), {
+      board: newBoard,
+      turn: player === "white" ? "black" : "white"
+    });
+  }
 
-      alert("Room created! Code: " + newRoomId);
-      startGameListener(newRoomId);
-    };
+  createBtn.onclick = async () => {
+    const name = usernameInput.value.trim();
+    if (!name) return alert("Enter name");
 
-    joinBtn.onclick = async () => {
-      const code = roomCodeInput.value.trim();
-      const name = usernameInput.value.trim();
-      if (!code || !name) return alert("Enter room code and your name");
+    roomId = Math.random().toString(36).substring(2, 8);
+    player = "white";
 
-      const snapshot = await get(ref(db, "rooms/" + code));
-      if (!snapshot.exists()) return alert("Room does not exist");
+    await set(ref(db, "rooms/" + roomId), {
+      player1: name,
+      board: defaultBoard,
+      turn: "white"
+    });
 
-      await set(ref(db, "rooms/" + code + "/player2"), name);
-      roomId = code;
-      isPlayer1 = false;
+    alert("Room created! Code: " + roomId);
+    roomCodeInput.value = roomId;
+    startGame(roomId);
+  };
 
-      alert("Joined room: " + code);
-      startGameListener(code);
-    };
+  joinBtn.onclick = async () => {
+    const code = roomCodeInput.value.trim();
+    const name = usernameInput.value.trim();
+    if (!code || !name) return alert("Enter code and name");
 
-    function startGameListener(roomId) {
-      onValue(ref(db, "rooms/" + roomId + "/board"), (snap) => {
-        if (snap.exists()) {
-          renderBoard(snap.val());
-        }
-      });
-    }
-  </script>
+    const roomRef = ref(db, "rooms/" + code);
+    const snap = await get(roomRef);
+
+    if (!snap.exists()) return alert("Room not found");
+
+    await update(roomRef, { player2: name });
+    roomId = code;
+    player = "black";
+    startGame(code);
+  };
+
+  function startGame(roomId) {
+    boardDiv.style.display = "grid";
+    statusDiv.innerHTML = "Waiting for another player...";
+
+    onValue(ref(db, "rooms/" + roomId), (snap) => {
+      const data = snap.val();
+      if (!data) return;
+
+      const board = data.board || defaultBoard;
+      const turn = data.turn || "white";
+      const p1 = data.player1 || "Player 1";
+      const p2 = data.player2 || "Player 2";
+
+      if (p1 && p2) {
+        statusDiv.innerHTML = `
+          You are <b>${player}</b> — 
+          ${turn === player ? "Your turn" : "Opponent's turn"}<br>
+          <b>White:</b> ${p1} | <b>Black:</b> ${p2}
+        `;
+      }
+
+      renderBoard(board, turn);
+    });
+  }
+</script>
 </body>
 </html>
-    
