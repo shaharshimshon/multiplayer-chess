@@ -235,6 +235,59 @@
       renderBoard(board, turn);
     });
   }
+
+  function isWhitePiece(piece) {
+      return ["♙", "♖", "♘", "♗", "♕", "♔"].includes(piece);
+    }
+
+    function isBlackPiece(piece) {
+      return ["♟", "♜", "♞", "♝", "♛", "♚"].includes(piece);
+    }
+
+    function isValidTurn(piece) {
+      return (isWhitePiece(piece) && playerColor === "white") ||
+             (isBlackPiece(piece) && playerColor === "black");
+    }
+
+    function isLegalMove(from, to, board) {
+      // Basic rule: cannot capture own piece
+      const fromPiece = board[from];
+      const toPiece = board[to];
+      if (!fromPiece) return false;
+      if (isWhitePiece(fromPiece) && isWhitePiece(toPiece)) return false;
+      if (isBlackPiece(fromPiece) && isBlackPiece(toPiece)) return false;
+
+      // More complex rules can be added here...
+      return true;
+    }
+
+    // Disable interaction if it's not your turn
+    function isMyTurn(board, color) {
+      const whiteTurn = turnCount(board) % 2 === 0;
+      return (whiteTurn && color === "white") || (!whiteTurn && color === "black");
+    }
+
+    function turnCount(board) {
+      let moves = 0;
+      board.forEach((cell, i) => {
+        if (cell !== defaultBoard[i]) moves++;
+      });
+      return moves;
+    }
+
+    // Make the board scrollable and responsive on small screens
+    window.addEventListener("resize", () => {
+      if (window.innerWidth < 600) {
+        boardDiv.style.transform = "scale(0.9)";
+      } else {
+        boardDiv.style.transform = "scale(1)";
+      }
+    });
+
+    window.dispatchEvent(new Event("resize"));
+  </script>
+</body>
+</html>
 </script>
 </body>
 </html>
