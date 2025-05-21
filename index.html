@@ -3,19 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Multiplayer Chess</title>
+  <title>Online Chess Game</title>
   <style>
-    * {
-      box-sizing: border-box;
-    }
-
     body {
-      font-family: 'Segoe UI', sans-serif;
       margin: 0;
-      background: #f4f4f4;
+      font-family: 'Segoe UI', sans-serif;
+      background: #f2f3f7;
       color: #333;
     }
-
     header {
       background: #1e1e2f;
       color: white;
@@ -23,69 +18,55 @@
       text-align: center;
       font-size: 1.5rem;
     }
-
     .container {
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 1rem;
+      padding: 2rem;
     }
-
     .lobby {
-      margin-bottom: 1.5rem;
       background: white;
       padding: 1rem;
       border-radius: 10px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-      width: 90%;
-      max-width: 400px;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
+      margin-bottom: 1rem;
+      text-align: center;
     }
-
     input, button {
-      padding: 0.6rem 1rem;
+      padding: 0.5rem;
+      margin: 0.5rem;
       font-size: 1rem;
-      border-radius: 6px;
+      border-radius: 5px;
       border: 1px solid #ccc;
-      width: 100%;
     }
-
     button {
       background: #4a90e2;
       color: white;
       border: none;
       cursor: pointer;
     }
-
     button:hover {
       background: #357ab7;
     }
-
-    .chess-board {
+    #board {
       display: grid;
-      grid-template-columns: repeat(8, 1fr);
-      max-width: 480px;
-      width: 100%;
-      aspect-ratio: 1;
+      grid-template-columns: repeat(8, 50px);
+      grid-template-rows: repeat(8, 50px);
+      gap: 0;
       border: 2px solid #222;
     }
-
     .cell {
+      width: 50px;
+      height: 50px;
       display: flex;
-      align-items: center;
       justify-content: center;
-      font-size: 2rem;
-      user-select: none;
+      align-items: center;
+      font-size: 1.6rem;
+      cursor: pointer;
     }
-
     .white { background: #eee; }
-    .black { background: #666; color: white; }
-
-    .selected {
-      outline: 3px solid yellow;
-    }
+    .black { background: #444; color: white; }
+    .selected { outline: 3px solid yellow; }
   </style>
 </head>
 <body>
@@ -93,19 +74,22 @@
   <div class="container">
     <div class="lobby">
       <input type="text" id="username" placeholder="Your name" />
-      <input type="text" id="room-code" placeholder="Room code to join (leave blank to create)" />
-      <button id="start-game">Start / Join Game</button>
+      <input type="text" id="room-code" placeholder="Room code" />
+      <div>
+        <button id="create-room">Create Game</button>
+        <button id="join-room">Join Game</button>
+      </div>
+      <p id="status"></p>
     </div>
-
-    <div id="status"></div>
-    <div id="game" class="chess-board" style="display:none;"></div>
+    <div id="board" style="display:none;"></div>
   </div>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-app.js";
-    import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-database.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.1/firebase-app.js";
+    import { getDatabase, ref, set, onValue, get, update } from "https://www.gstatic.com/firebasejs/11.10.1/firebase-database.js";
+    import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.0.0-beta.1/+esm";
 
-    const firebaseConfig = {
+    const app = initializeApp({
       apiKey: "AIzaSyBDHZpDfKz711k2agTq4ekGU7-iN_p99mc",
       authDomain: "icqclone.firebaseapp.com",
       databaseURL: "https://icqclone-default-rtdb.firebaseio.com",
@@ -113,149 +97,184 @@
       storageBucket: "icqclone.appspot.com",
       messagingSenderId: "922649039358",
       appId: "1:922649039358:web:fbdd0a0e21d64e4d32f0af"
-    };
+    });
 
-    const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
+    const boardDiv = document.getElementById("board");
+    const createBtn = document.getElementById("create-room");
+    const joinBtn = document.getElementById("join-room");
+    const usernameInput = document.getElementById("username");
+    const roomCodeInput = document.getElementById("room-code");
+    const statusText = document.getElementById("status");
 
-    let boardEl = document.getElementById("game");
-    let startBtn = document.getElementById("start-game");
-    let usernameEl = document.getElementById("username");
-    let roomCodeEl = document.getElementById("room-code");
-    let statusEl = document.getElementById("status");
-
-    let chess = null;
     let roomId = "";
-    let playerColor = "";
-
-    const piecesUnicode = {
-      p: "♟", r: "♜", n: "♞", b: "♝", q: "♛", k: "♚",
-      P: "♙", R: "♖", N: "♘", B: "♗", Q: "♕", K: "♔"
-    };
-
-    startBtn.onclick = async () => {
-      const name = usernameEl.value.trim();
-      const code = roomCodeEl.value.trim();
-
-      if (!name) return alert("Enter your name");
-
-      if (code === "") {
-        roomId = Math.random().toString(36).substring(2, 8);
-        playerColor = "w";
-        chess = new Chess();
-        await set(ref(db, "rooms/" + roomId), {
-          board: chess.fen(),
-          turn: "w",
-          players: { white: name }
-        });
-        alert("Room created: " + roomId);
-      } else {
-        const snap = await get(ref(db, "rooms/" + code));
-        if (!snap.exists()) return alert("Room not found");
-
-        const data = snap.val();
-        if (data.players?.black) return alert("Room full");
-
-        roomId = code;
-        playerColor = "b";
-        await set(ref(db, "rooms/" + roomId + "/players/black"), name);
-        alert("Joined room: " + roomId);
-      }
-
-      initGameListeners();
-    };
-
-    function initGameListeners() {
-      onValue(ref(db, "rooms/" + roomId + "/board"), (snap) => {
-        if (!snap.exists()) return;
-        if (!chess) chess = new Chess();
-        chess.load(snap.val());
-        renderBoard();
-      });
-
-      onValue(ref(db, "rooms/" + roomId + "/turn"), (snap) => {
-        const turn = snap.val();
-        statusEl.innerText = turn === playerColor
-          ? "Your turn"
-          : "Waiting for opponent...";
-      });
-
-      boardEl.style.display = "grid";
-    }
-
-    function renderBoard() {
-      boardEl.innerHTML = "";
-      const board = chess.board();
-      board.forEach((row, y) => {
-        row.forEach((cell, x) => {
-          const index = playerColor === "w" ? y * 8 + x : (7 - y) * 8 + (7 - x);
-          const square = document.createElement("div");
-          square.className = `cell ${(x + y) % 2 === 0 ? "white" : "black"}`;
-          square.dataset.x = x;
-          square.dataset.y = y;
-
-          if (cell) {
-            square.textContent = piecesUnicode[cell.color === "w" ? cell.type.toUpperCase() : cell.type];
-          }
-
-          square.onclick = () => handleClick(x, y);
-          boardEl.appendChild(square);
-        });
-      });
-    }
-
+    let color = "";
     let selected = null;
-    function handleClick(x, y) {
-      if (!chess || chess.turn() !== playerColor) return;
+    let game = new Chess();
 
-      const square = String.fromCharCode(97 + x) + (8 - y);
-      const piece = chess.get(square);
+    function createBoard(position) {
+      boardDiv.innerHTML = "";
+      const board = game.board();
+      for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+          const square = board[r][c];
+          const cell = document.createElement("div");
+          cell.classList.add("cell", (r + c) % 2 === 0 ? "white" : "black");
+          cell.dataset.row = r;
+          cell.dataset.col = c;
+          if (square) cell.textContent = getUnicode(square);
+          if (selected && selected.row === r && selected.col === c) {
+            cell.classList.add("selected");
+          }
+          cell.addEventListener("click", () => handleCellClick(r, c));
+          boardDiv.appendChild(cell);
+        }
+      }
+    }
 
-      if (selected) {
-        // Try move
-        const move = chess.move({ from: selected, to: square, promotion: "q" });
+    function getUnicode(piece) {
+      const symbols = {
+        p: "♟", r: "♜", n: "♞", b: "♝", q: "♛", k: "♚",
+        P: "♙", R: "♖", N: "♘", B: "♗", Q: "♕", K: "♔"
+      };
+      return symbols[piece.color === 'w' ? piece.type.toUpperCase() : piece.type];
+    }
+
+    async function createRoom() {
+      const name = usernameInput.value.trim();
+      const code = roomCodeInput.value.trim().toLowerCase();
+      if (!name || !code) return alert("Name and room code required");
+
+      const roomRef = ref(db, "rooms/" + code);
+      const snapshot = await get(roomRef);
+      if (snapshot.exists()) return alert("Room already exists");
+
+      roomId = code;
+      color = "w";
+
+      await set(roomRef, {
+        playerWhite: name,
+        turn: "w",
+        fen: game.fen()
+      });
+
+      startGame(roomRef);
+    }
+
+    async function joinRoom() {
+      const name = usernameInput.value.trim();
+      const code = roomCodeInput.value.trim().toLowerCase();
+      if (!name || !code) return alert("Name and room code required");
+
+      const roomRef = ref(db, "rooms/" + code);
+      const snapshot = await get(roomRef);
+      if (!snapshot.exists()) return alert("Room does not exist");
+
+      roomId = code;
+      color = "b";
+
+      await update(roomRef, {
+        playerBlack: name
+      });
+
+      startGame(roomRef);
+    }
+
+    function startGame(roomRef) {
+      statusText.textContent = `You are ${color === "w" ? "White" : "Black"}`;
+      document.querySelector(".lobby").style.display = "none";
+      boardDiv.style.display = "grid";
+
+      onValue(roomRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data && data.fen) {
+          game.load(data.fen);
+          createBoard();
+        }
+      });
+    }
+
+    createBtn.addEventListener("click", createRoom);
+    joinBtn.addEventListener("click", joinRoom);
+
+    function handleCellClick(row, col) {
+      const board = game.board();
+      const piece = board[row][col];
+
+      if (!selected) {
+        // First click: select a piece
+        if (piece && piece.color === color) {
+          selected = { row, col };
+          createBoard();
+        }
+      } else {
+        const from = getSquare(selected.row, selected.col);
+        const to = getSquare(row, col);
+
+        const move = game.move({ from, to, promotion: "q" });
 
         if (move) {
-          // Valid move
-          set(ref(db, "rooms/" + roomId + "/board"), chess.fen());
-          set(ref(db, "rooms/" + roomId + "/turn"), chess.turn());
           selected = null;
-          renderBoard();
-
-          // Check for game end
-          if (chess.game_over()) {
-            alert("Game Over: " + (
-              chess.in_checkmate() ? (chess.turn() === "w" ? "Black wins!" : "White wins!") :
-              chess.in_stalemate() ? "Stalemate!" :
-              "Draw!"
-            ));
-          }
+          update(ref(db, "rooms/" + roomId), {
+            fen: game.fen(),
+            turn: game.turn()
+          });
         } else {
+          // Illegal move or second click, deselect
           selected = null;
-          renderBoard();
         }
-      } else if (piece && piece.color === playerColor) {
-        selected = square;
-        highlightMoves(square);
+        createBoard();
       }
     }
 
-    function highlightMoves(square) {
-      const moves = chess.moves({ square, verbose: true });
-      renderBoard();
+    function getSquare(row, col) {
+      const files = "abcdefgh";
+      const ranks = "87654321";
+      return files[col] + ranks[row];
+    }
 
-      moves.forEach(m => {
-        const [x, y] = [m.to.charCodeAt(0) - 97, 8 - parseInt(m.to[1])];
-        const index = playerColor === "w" ? y * 8 + x : (7 - y) * 8 + (7 - x);
-        const cell = boardEl.children[index];
-        if (cell) {
-          cell.style.outline = "2px solid yellow";
+    window.addEventListener("beforeunload", () => {
+      if (roomId && playerName) {
+        const playerPath = color === "w" ? "player1" : "player2";
+        remove(ref(db, "rooms/" + roomId + "/" + playerPath));
+      }
+    });
+
+    function createBoard() {
+      const board = game.board();
+      boardDiv.innerHTML = "";
+      boardDiv.style.display = "grid";
+      boardDiv.style.gridTemplateColumns = "repeat(8, 1fr)";
+      boardDiv.style.maxWidth = "100vw";
+
+      for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+          const cell = document.createElement("div");
+          cell.className = "cell " + ((row + col) % 2 === 0 ? "white" : "black");
+          cell.style.aspectRatio = "1";
+          cell.style.userSelect = "none";
+
+          const piece = board[row][col];
+          if (piece) {
+            cell.textContent = piece.unicode;
+            if (piece.color !== color) {
+              cell.style.opacity = "0.7";
+            }
+          }
+
+          cell.addEventListener("click", () => {
+            if (game.turn() === color) {
+              handleCellClick(row, col);
+            }
+          });
+
+          if (selected && selected.row === row && selected.col === col) {
+            cell.style.outline = "3px solid yellow";
+          }
+
+          boardDiv.appendChild(cell);
         }
-      });
-
-      const [x, y] = [square.charCodeAt(0) - 97, 8 - parseInt(square[1])];
-      const index = playerColor === "w" ? y * 8 + x : (7 - y) * 8 + (7 - x);
-      boardEl.children[index].style.outline = "2px solid red";
+      }
     }
   </script>
 </body>
